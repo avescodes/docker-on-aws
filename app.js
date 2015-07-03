@@ -8,29 +8,53 @@
  * - PUT /dec     - Decrement the service count. Returns 204.
  */
 
+// Express setup (incl. logging)
 var express = require('express');
 var morgan = require('morgan');
 
 var PORT = process.env.PORT || 8080;
-var count = 0;
 
 var app = express();
 
 app.use(morgan('[:date[iso]] :method :url\t:status'));
 
+
+// Redis Setup
+var redis = require('redis'),
+    client = redis.createClient(process.env.DB_PORT, process.env.DB_HOST, {});
+
+client.on('connect', function() {
+    console.log('Connected to Redis');
+});
+
+client.set('framework', 'node');
+
+
+// Helper Functions
+function getCount(callback) {
+  return client.get('count', callback);
+}
+
+
+// Routes
 app.get('/', function (req, res) {
-  res.status(200).send({count: count});
+  getCount(function (err, reply) {
+    var value = (reply == null ? 0 : parseInt(reply));
+    res.status(200).send({count: value});
+  });
 });
 
 app.put('/inc', function (req, res) {
-  count += 1;
+  client.incr('count');
   res.status(204).end();
 });
 
 app.put('/dec', function (req, res) {
-  count -= 1;
+  client.decr('count');
   res.status(204).end();
 });
 
+
+// Launch server
 app.listen(PORT);
 console.log('Running on http://localhost:' + PORT);
