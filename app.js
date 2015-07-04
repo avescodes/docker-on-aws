@@ -27,8 +27,6 @@ client.on('connect', function() {
     console.log('Connected to Redis');
 });
 
-client.set('framework', 'node');
-
 
 // Helper Functions
 function getCount(callback) {
@@ -38,8 +36,8 @@ function getCount(callback) {
 
 // Routes
 app.get('/', function (req, res) {
-  getCount(function (err, reply) {
-    var value = (reply == null ? 0 : parseInt(reply));
+  getCount((err, reply) => {
+    const value = reply ? 0 : parseInt(reply);
     res.status(200).send({count: value});
   });
 });
