@@ -36,8 +36,8 @@ function getCount(callback) {
 
 // Routes
 app.get('/', function (req, res) {
-  getCount((err, reply) => {
-    const value = reply ? 0 : parseInt(reply);
+  getCount(function (err, reply) {
+    var value = (reply == null ? 0 : parseInt(reply));
     res.status(200).send({count: value});
   });
 });
