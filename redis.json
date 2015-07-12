@@ -1,0 +1,26 @@
+{
+  "containerDefinitions": [
+    {
+      "volumesFrom": [],
+      "portMappings": [
+        {
+          "hostPort": 6379,
+          "containerPort": 6379,
+          "protocol": "tcp"
+        }
+      ],
+      "command": [],
+      "environment": [],
+      "essential": true,
+      "entryPoint": [],
+      "links": [],
+      "mountPoints": [],
+      "memory": 250,
+      "name": "redis",
+      "cpu": 256,
+      "image": "redis"
+    }
+  ],
+  "volumes": [],
+  "family": "redis"
+}

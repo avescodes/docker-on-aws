@@ -1,0 +1,41 @@
+{
+  "containerDefinitions": [
+    {
+      "volumesFrom": [],
+      "portMappings": [
+        {
+          "hostPort": 30001,
+          "containerPort": 30001,
+          "protocol": "tcp"
+        }
+      ],
+      "command": [
+        "syslog://<TODO: Papertrail endpoint:port (e.g. logsN.papertrailapp.com:NNNNN)>"
+      ],
+      "environment": [],
+      "essential": true,
+      "entryPoint": [],
+      "links": [],
+      "mountPoints": [
+        {
+          "containerPath": "/tmp/docker.sock",
+          "sourceVolume": "docker-socket",
+          "readOnly": false
+        }
+      ],
+      "memory": 50,
+      "name": "logspout",
+      "cpu": 50,
+      "image": "gliderlabs/logspout"
+    }
+  ],
+  "volumes": [
+    {
+      "host": {
+        "sourcePath": "/var/run/docker.sock"
+      },
+      "name": "docker-socket"
+    }
+  ],
+  "family": "logspout"
+}
