@@ -1,0 +1,31 @@
+{
+  "containerDefinitions": [
+    {
+      "volumesFrom": [],
+      "portMappings": [
+        {
+          "hostPort": 8080,
+          "containerPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "command": [],
+      "environment": [
+        {
+          "name": "DB_HOST",
+          "value": "TODO - Replace with your own ELB DNS"
+        }
+      ],
+      "essential": true,
+      "entryPoint": [],
+      "links": [],
+      "mountPoints": [],
+      "memory": 250,
+      "name": "sample-service",
+      "cpu": 256,
+      "image": "rkneufeld/sample-service:redis"
+    }
+  ],
+  "volumes": [],
+  "family": "sample-service-elb"
+}
