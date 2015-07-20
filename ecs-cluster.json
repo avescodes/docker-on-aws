@@ -1,0 +1,243 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+
+  "Description": "Small ECS cluster with sample-service running on auto-scaling group.",
+
+  "Parameters": {
+    "ClusterSize": {
+      "Description": "Number of instances to run in the ECS cluster",
+      "Type": "Number",
+      "Default": "1",
+      "MinValue": "0",
+      "MaxValue": "10",
+      "ConstraintDescription": "must lower than 10 (or, raise the limits in template)."
+    },
+
+    "ClusterInstanceType": {
+      "Description": "ECS Cluster Instance Type",
+      "Type": "String",
+      "Default": "t2.micro",
+      "AllowedValues": ["t2.micro", "t2.small", "t2.medium", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge", "c4.large", "c4.xlarge", "c4.2xlarge", "c4.4xlarge", "c4.8xlarge", "g2.2xlarge", "r3.large", "r3.xlarge", "r3.2xlarge", "r3.4xlarge", "r3.8xlarge", "i2.xlarge", "i2.2xlarge", "i2.4xlarge", "i2.8xlarge", "d2.xlarge", "d2.2xlarge", "d2.4xlarge", "d2.8xlarge", "hi1.4xlarge", "hs1.8xlarge", "cr1.8xlarge", "cc2.8xlarge"],
+      "ConstraintDescription": "must be a valid HVM instance type."
+    },
+
+    "KeyName": {
+      "Description": "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+    }
+  },
+
+  "Mappings": {
+    "RegionToECSOptimizedAMI": {
+      "us-east-1":      {"AMI": "ami-8da458e6"},
+      "us-west-2":      {"AMI": "ami-db0306eb"},
+      "eu-west-1":      {"AMI": "ami-7948320e"},
+      "ap-northeast-1": {"AMI": "ami-fa12b7fa"},
+      "ap-southeast-2": {"AMI": "ami-014f353b"}
+    }
+  },
+
+  "Resources": {
+    "SampleServiceELB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "AvailabilityZones": {"Fn::GetAZs" : ""},
+        "Listeners": [{
+          "LoadBalancerPort": "80",
+          "InstancePort": "8080",
+          "Protocol": "HTTP"
+        }],
+        "HealthCheck": {
+          "HealthyThreshold": "2",
+          "Interval": "10",
+          "Target": "HTTP:8080/",
+          "Timeout": "5",
+          "UnhealthyThreshold": "6"
+        }
+      }
+    },
+
+    "RedisELB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "AvailabilityZones": {"Fn::GetAZs" : ""},
+        "SecurityGroups": [{"Fn::GetAtt": ["RedisELBSecurityGroup", "GroupId"]}],
+        "Listeners": [{
+          "LoadBalancerPort": "6379",
+          "InstancePort": "6379",
+          "Protocol": "TCP"
+        }],
+        "HealthCheck": {
+          "HealthyThreshold": "2",
+          "Interval": "10",
+          "Target": "TCP:6379",
+          "Timeout": "5",
+          "UnhealthyThreshold": "6"
+        }
+      }
+    },
+
+    "RedisELBSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Allow Cluster access to Redis (purposefully open for easier bootstrap-use internal scheme for production).",
+        "SecurityGroupIngress": [{
+          "IpProtocol": "tcp",
+          "FromPort": "6379",
+          "ToPort": "6379",
+          "CidrIp": "0.0.0.0/0"
+        }]
+      }
+    },
+
+    "RedisSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Allow Cluster access to Redis",
+        "SecurityGroupIngress": [{
+          "IpProtocol": "tcp",
+          "FromPort": "6379",
+          "ToPort": "6379",
+          "SourceSecurityGroupOwnerId": {"Fn::GetAtt": ["RedisELB", "SourceSecurityGroup.OwnerAlias"]},
+          "SourceSecurityGroupName": {"Fn::GetAtt" : ["RedisELB", "SourceSecurityGroup.GroupName"]}
+        }]
+      }
+    },
+
+    "ClusterSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Allow inbound access to Cluster (8080, 22)",
+        "SecurityGroupIngress": [{
+          "IpProtocol": "tcp",
+          "FromPort": "8080",
+          "ToPort": "8080",
+          "SourceSecurityGroupOwnerId": {"Fn::GetAtt": ["SampleServiceELB", "SourceSecurityGroup.OwnerAlias"]},
+          "SourceSecurityGroupName": {"Fn::GetAtt" : ["SampleServiceELB", "SourceSecurityGroup.GroupName"]}
+        }, {
+          "IpProtocol": "tcp",
+          "FromPort": "22",
+          "ToPort": "22",
+          "CidrIp": "0.0.0.0/0"
+        }]
+      }
+    },
+
+    "ClusterAutoScalingGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {"AvailabilityZones": {"Fn::GetAZs": ""},
+        "LaunchConfigurationName": {"Ref": "ClusterLaunchConfig"},
+        "MinSize": "0",
+        "MaxSize": "10",
+        "DesiredCapacity": {"Ref": "ClusterSize"},
+        "Tags": [{
+          "Key": "Name",
+          "Value": {"Fn::Join": ["", ["ECS - ", {"Ref": "AWS::StackName"}]]},
+          "PropagateAtLaunch": true
+        }]
+      }
+    },
+
+    "ClusterLaunchConfig": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Properties": {
+        "ImageId": {"Fn::FindInMap": ["RegionToECSOptimizedAMI", {"Ref": "AWS::Region"}, "AMI"]},
+        "InstanceType": {"Ref": "ClusterInstanceType"},
+        "IamInstanceProfile": "ecsInstanceRole",
+        "KeyName": {"Ref": "KeyName"},
+        "SecurityGroups": [{"Ref": "ClusterSecurityGroup"}, {"Ref": "RedisSecurityGroup"}],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/bin/bash\n",
+                "echo ECS_CLUSTER=", {"Ref": "Cluster"}, " >> /etc/ecs/ecs.config\n"
+              ]
+            ]
+          }
+        }
+      }
+    },
+
+    "Cluster": {
+      "Type": "AWS::ECS::Cluster"
+    },
+
+    "SampleServiceTaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "ContainerDefinitions": [{
+          "Name": "sample-service",
+          "Image": "rkneufeld/sample-service:redis",
+          "Memory": 250,
+          "Cpu": 256,
+          "PortMappings": [{
+            "HostPort": 8080,
+            "ContainerPort": 8080
+          }],
+          "Environment": [{"Name": "DB_HOST", "Value": {"Fn::GetAtt": ["RedisELB", "DNSName"]}}],
+          "Essential": true
+        }]
+      }
+    },
+
+    "SampleService": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": {"Ref": "Cluster"},
+        "DesiredCount": {"Ref": "ClusterSize"},
+        "LoadBalancers": [{
+          "ContainerName": "sample-service",
+          "ContainerPort": 8080,
+          "LoadBalancerName": {"Ref": "SampleServiceELB"}
+        }],
+        "Role": "ecsServiceRole",
+        "TaskDefinition": {"Ref": "SampleServiceTaskDefinition"}
+      }
+    },
+
+    "RedisTaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "ContainerDefinitions": [{
+          "Name": "redis",
+          "Image": "redis",
+          "Memory": 250,
+          "Cpu": 256,
+          "PortMappings": [
+            {
+              "HostPort": 6379,
+              "ContainerPort": 6379
+            }
+          ],
+          "Essential": true
+        }]
+      }
+    },
+
+    "RedisService": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": {"Ref": "Cluster"},
+        "DesiredCount": "1",
+        "LoadBalancers": [{
+          "ContainerName": "redis",
+          "ContainerPort": 6379,
+          "LoadBalancerName": {"Ref": "RedisELB"}
+        }],
+        "Role": "ecsServiceRole",
+        "TaskDefinition": {"Ref": "RedisTaskDefinition"}
+      }
+    }
+
+  },
+
+  "Outputs": {
+    "URL": {
+      "Description": "The URL of the 'count' sample service",
+      "Value": {"Fn::Join": ["", ["http://", {"Fn::GetAtt": ["SampleServiceELB", "DNSName"]}]]}
+    }
+  }
+}
